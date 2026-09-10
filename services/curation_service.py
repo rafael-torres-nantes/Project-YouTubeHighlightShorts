@@ -29,7 +29,7 @@ class HighlightCuratorResponse(BaseModel):
 class CurationService:
     """Executa a curadoria semantica de clipes via LLM estruturado com Gemini API."""
 
-    MODEL_NAME = "gemini-2.5-flash"
+    MODEL_NAME = "gemini-3.6-flash"
 
     def __init__(self, api_key: Optional[str] = None) -> None:
         self._api_key = api_key or os.getenv("GEMINI_API_KEY")

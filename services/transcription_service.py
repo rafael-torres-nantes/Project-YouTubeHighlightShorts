@@ -1,6 +1,19 @@
 ﻿from typing import Any, Dict, List, Optional
 import logging
 import os
+import sys
+
+# Configura caminhos para bibliotecas CUDA no Windows
+site_packages_dir = os.path.join(os.path.dirname(os.path.dirname(os.__file__)), "Lib", "site-packages")
+for sub in ["cublas", "cudnn"]:
+    bin_dir = os.path.join(site_packages_dir, "nvidia", sub, "bin")
+    if os.path.exists(bin_dir):
+        try:
+            os.add_dll_directory(bin_dir)
+            os.environ["PATH"] = bin_dir + ";" + os.environ.get("PATH", "")
+        except Exception:
+            pass
+
 from faster_whisper import WhisperModel
 
 logger = logging.getLogger(__name__)
@@ -81,40 +94,80 @@ class TranscriptionService:
         model = self.load_model()
         logger.info("Iniciando transcricao word-level para: %s", audio_path)
 
-        segments_generator, info = model.transcribe(
-            audio_path,
-            beam_size=5,
-            word_timestamps=True,
-            vad_filter=True,
-        )
-
-        logger.info("Idioma detectado: %s com probabilidade %.2f%%", info.language, info.language_probability * 100)
-
-        transcription_results = []
-        for segment in segments_generator:
-            words_list = []
-            if segment.words:
-                for word in segment.words:
-                    words_list.append(
-                        {
-                            "word": word.word.strip(),
-                            "start": float(word.start),
-                            "end": float(word.end),
-                            "probability": float(word.probability),
-                        }
-                    )
-
-            transcription_results.append(
-                {
-                    "start": float(segment.start),
-                    "end": float(segment.end),
-                    "text": segment.text.strip(),
-                    "words": words_list,
-                }
+        try:
+            segments_generator, info = model.transcribe(
+                audio_path,
+                beam_size=5,
+                word_timestamps=True,
+                vad_filter=True,
             )
 
-        logger.info("Transcricao concluida: %d segmentos identificados.", len(transcription_results))
-        return transcription_results
+            logger.info("Idioma detectado: %s com probabilidade %.2f%%", info.language, info.language_probability * 100)
+
+            transcription_results = []
+            for segment in segments_generator:
+                words_list = []
+                if segment.words:
+                    for word in segment.words:
+                        words_list.append(
+                            {
+                                "word": word.word.strip(),
+                                "start": float(word.start),
+                                "end": float(word.end),
+                                "probability": float(word.probability),
+                            }
+                        )
+
+                transcription_results.append(
+                    {
+                        "start": float(segment.start),
+                        "end": float(segment.end),
+                        "text": segment.text.strip(),
+                        "words": words_list,
+                    }
+                )
+
+            logger.info("Transcricao concluida: %d segmentos identificados.", len(transcription_results))
+            return transcription_results
+
+        except Exception as exc:
+            if "cublas" in str(exc).lower() and self._device == "cuda":
+                logger.warning("Falha durante inferencia em CUDA (%s). Executando com CPU fallback...", exc)
+                self._model = WhisperModel(
+                    self._model_size,
+                    device="cpu",
+                    compute_type="int8",
+                    download_root=self._download_root,
+                )
+                segments_generator, info = self._model.transcribe(
+                    audio_path,
+                    beam_size=5,
+                    word_timestamps=True,
+                    vad_filter=True,
+                )
+                transcription_results = []
+                for segment in segments_generator:
+                    words_list = []
+                    if segment.words:
+                        for word in segment.words:
+                            words_list.append(
+                                {
+                                    "word": word.word.strip(),
+                                    "start": float(word.start),
+                                    "end": float(word.end),
+                                    "probability": float(word.probability),
+                                }
+                            )
+                    transcription_results.append(
+                        {
+                            "start": float(segment.start),
+                            "end": float(segment.end),
+                            "text": segment.text.strip(),
+                            "words": words_list,
+                        }
+                    )
+                return transcription_results
+            raise RuntimeError(f"Falha na inferencia de transcricao: {exc}") from exc
 
     def map_transcription_to_engagement(
         self,
@@ -136,7 +189,6 @@ class TranscriptionService:
             seg_start = segment["start"]
             seg_end = segment["end"]
 
-            # Obtem a media de engajamento do intervalo do segmento
             matching_scores = []
             for point in engagement_curve:
                 if point["end_time"] >= seg_start and point["start_time"] <= seg_end:
