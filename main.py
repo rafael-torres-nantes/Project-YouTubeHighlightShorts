@@ -4,6 +4,7 @@ import os
 import sys
 from tqdm import tqdm
 
+from config.settings import AppSettings
 from controllers.pipeline_controller import PipelineController
 
 # Configuracao de encoding para Windows CLI
@@ -17,8 +18,11 @@ logging.basicConfig(
 logger = logging.getLogger("YouTubeHighlightShorts")
 
 
-def parse_arguments() -> argparse.Namespace:
+def parse_arguments(default_max_clips: int) -> argparse.Namespace:
     """Configura e valida os argumentos da linha de comando.
+
+    Args:
+        default_max_clips: Quantidade padrao lida das configuracoes/.env.
 
     Returns:
         Namespace com os argumentos parseados.
@@ -35,8 +39,8 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--max-clips",
         type=int,
-        default=3,
-        help="Numero maximo de cortes verticais a serem gerados (padrao: 3).",
+        default=default_max_clips,
+        help=f"Numero maximo de cortes verticais a serem gerados (padrao do .env: {default_max_clips}).",
     )
     parser.add_argument(
         "--output-dir",
@@ -49,7 +53,8 @@ def parse_arguments() -> argparse.Namespace:
 
 def main() -> None:
     """Entrypoint principal da aplicacao CLI."""
-    args = parse_arguments()
+    settings = AppSettings()
+    args = parse_arguments(default_max_clips=settings.get_max_clips())
 
     print("\n" + "=" * 60)
     print("🎬 YouTube Highlight Shorts - Pipeline Hibrido de Cortes Verticais")
@@ -58,7 +63,7 @@ def main() -> None:
     print(f"🎯 Meta de Cortes: {args.max_clips}")
     print(f"📁 Diretorio de Saida: {os.path.abspath(args.output_dir)}\n")
 
-    controller = PipelineController()
+    controller = PipelineController(settings=settings)
 
     with tqdm(total=100, desc="Progresso Geral", bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt}% [{elapsed}]") as pbar:
         last_val = 0

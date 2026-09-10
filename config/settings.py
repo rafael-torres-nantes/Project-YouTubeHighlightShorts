@@ -12,6 +12,7 @@ class AppSettings:
         self._ffmpeg_bin = os.getenv("FFMPEG_BIN", "ffmpeg")
         self._ffprobe_bin = os.getenv("FFPROBE_BIN", "ffprobe")
         self._temp_dir = os.getenv("TEMP_STORAGE_DIR", "./tmp")
+        self._max_clips = int(os.getenv("MAX_CLIPS", "3"))
 
     def get_ytdlp_bin(self) -> str:
         """Retorna o caminho ou comando do executavel do yt-dlp.
@@ -44,3 +45,11 @@ class AppSettings:
             Caminho do diretorio de armazenamento intermediario.
         """
         return self._temp_dir
+
+    def get_max_clips(self) -> int:
+        """Retorna a quantidade padrao de clipes a serem gerados.
+
+        Returns:
+            Numero inteiro configurado no ambiente.
+        """
+        return self._max_clips
