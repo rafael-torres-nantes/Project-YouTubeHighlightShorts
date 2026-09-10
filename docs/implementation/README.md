@@ -6,4 +6,4 @@
 | Fase 2 | Retencao e Transcricao | ✅ Concluido | retention_service.py com find_peaks e transcription_service.py com word-level e mapeamento de engajamento. |
 | Fase 3 | Curadoria Semantica LLM | ✅ Concluido | curation_service.py via chamada estruturada (JSON schema) com Pydantic e Google GenAI SDK. |
 | Fase 4 | Edicao e Renderizacao | ✅ Concluido | video_editor_service.py com recorte 9:16, blurred background padding e geracao/queima de legendas .ass. |
-| Fase 5 | Interface CLI | ⏳ Planejado | main.py orquestrado com barras de progresso. |
+| Fase 5 | Interface CLI e Orquestrador | ✅ Concluido | pipeline_controller.py, file_utils.py e main.py integrados com barra de progresso tqdm. |
