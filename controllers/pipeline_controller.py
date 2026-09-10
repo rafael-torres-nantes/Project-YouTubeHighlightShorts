@@ -104,8 +104,20 @@ class PipelineController:
                 all_words.extend(seg.get("words", []))
 
             for index, highlight in enumerate(selected_highlights, start=1):
-                clip_start = highlight["start_time"]
-                clip_end = highlight["end_time"]
+                raw_start = highlight["start_time"]
+                raw_end = highlight["end_time"]
+
+                # Encontra a palavra inicial mais proxima para evitar corte no meio de sílaba
+                start_words = [w for w in all_words if abs(w["start"] - raw_start) <= 1.0]
+                clip_start = start_words[0]["start"] if start_words else raw_start
+
+                # Encontra a palavra final correspondente e adiciona pequeno buffer auditivo (0.35s)
+                end_words = [w for w in all_words if w["end"] <= (raw_end + 1.2) and w["end"] >= (raw_end - 0.5)]
+                if end_words:
+                    clip_end = max(raw_end, end_words[-1]["end"] + 0.35)
+                else:
+                    clip_end = raw_end + 0.35
+
                 safe_title = "".join(c for c in highlight["title"] if c.isalnum() or c in (" ", "_", "-")).strip()
                 clip_filename = f"clip_{index}_{safe_title[:30].replace(' ', '_')}.mp4"
                 output_clip_path = os.path.join(output_dir, clip_filename)
@@ -131,6 +143,9 @@ class PipelineController:
                     ass_subtitles_path=ass_sub_path,
                 )
 
+                highlight["start_time"] = round(clip_start, 2)
+                highlight["end_time"] = round(clip_end, 2)
+                highlight["duration"] = round(clip_end - clip_start, 2)
                 highlight["rendered_path"] = rendered_path
                 generated_clips.append(highlight)
 
@@ -140,7 +155,6 @@ class PipelineController:
             return generated_clips
 
         finally:
-            # Limpeza preventiva de arquivos temporarios intermediarios
             logger.info("Limpando arquivos temporarios em: %s", temp_dir)
             if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir, ignore_errors=True)

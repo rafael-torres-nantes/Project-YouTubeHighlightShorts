@@ -12,12 +12,18 @@ logger = logging.getLogger(__name__)
 class ClipHighlight(BaseModel):
     """Schema para cada corte de destaque retornado pelo LLM."""
 
-    start_time: float = Field(description="Tempo inicial do corte em segundos, alinhado ao inicio de uma frase.")
-    end_time: float = Field(description="Tempo final do corte em segundos, alinhado ao encerramento de um raciocinio.")
+    start_time: float = Field(
+        description="Tempo inicial em segundos. DEVE coincidir EXATAMENTE com o valor de 'start' do primeiro segmento de fala escolhido."
+    )
+    end_time: float = Field(
+        description="Tempo final em segundos. DEVE coincidir EXATAMENTE com o valor de 'end' do ultimo segmento onde a frase e o pensamento foram 100% concluidos."
+    )
     title: str = Field(description="Titulo atrativo e impactante para o Short/Reel.")
     viral_score: float = Field(description="Pontuacao de 0.0 a 10.0 baseada no gancho e retencao.")
     hook_summary: str = Field(description="Breve explicacao do gancho presente nos primeiros 3 segundos.")
-    reasoning: str = Field(description="Justificativa da completude semantica (inicio, meio e fim).")
+    reasoning: str = Field(
+        description="Transcreva aqui as ultimas 5 palavras ditas pelo orador para comprovar que a frase terminou de forma completa (com ponto final) e sem corte abrupto."
+    )
 
 
 class HighlightCuratorResponse(BaseModel):
@@ -63,8 +69,8 @@ class CurationService:
     ) -> List[Dict[str, Any]]:
         """Seleciona os melhores clipes correlacionando dados de retencao e analise semantica.
 
-        Avalia criterios estritos: gancho forte no inicio, coerencia narrativa sem cortes
-        abruptos e duracao alvo para formatos curtos.
+        Avalia criterios estritos: gancho forte no inicio, conclusao gramatical completa da frase
+        sem cortar palavras ao meio e duracao alvo para formatos curtos.
 
         Args:
             enriched_segments: Segmentos transcritos enriquecidos com score de retencao.
@@ -81,7 +87,6 @@ class CurationService:
         """
         client = self.get_client()
 
-        # Condensa os dados para envio no prompt sem estourar contexto desnecessariamente
         transcript_context = []
         for s in enriched_segments:
             transcript_context.append(
@@ -95,14 +100,17 @@ class CurationService:
 
         system_instruction = (
             "Voce e um Editor Senior e Estrategista de Videos Virais especializado em YouTube Shorts, "
-            "TikTok e Instagram Reels. Sua funcao e analisar a transcricao temporizada e as janelas "
-            "de pico de retencao para identificar os trechos com maior potencial de viralizacao.\n\n"
-            "Criterios Obrigatorios:\n"
-            "1. Gancho forte nos primeiros 3 segundos (pergunta intrigante, afirmacao ousada, quebra de expectativa).\n"
-            "2. Coerencia e completude: o corte DEVE ter inicio, meio e conclusao logica. NUNCA inicie no meio de uma frase nem corte abruptamente no final.\n"
-            f"3. Duracao estrita entre {min_clip_duration} e {max_clip_duration} segundos.\n"
-            "4. Priorize segmentos que coincidam com picos de retencao do heatmap.\n"
-            f"5. Retorne no maximo {max_clips} clipes de alta qualidade."
+            "TikTok e Instagram Reels. Sua principal prioridade e a EXPERIENCIA AUDITIVA DO ESPECTADOR: "
+            "um corte que termina no meio de uma frase ou no meio de um pensamento DESTROI o video.\n\n"
+            "Regras Estritas de Alinhamento e Conclusao:\n"
+            "1. INICIO PERFEITO: 'start_time' DEVE ser exatamente o 'start' do segmento onde uma nova frase ou ideia comeca.\n"
+            "2. FIM PERFEITO (INVIOLAVEL): 'end_time' DEVE ser exatamente o 'end' de um segmento onde a pessoa conclui "
+            "completamente o raciocinio (pontos finais como '.', '!', '?'). NUNCA termine em conectivos ('mas', 'porque', 'e', 'que', 'quando', 'entao') "
+            "ou no meio de uma explicacao inacabada.\n"
+            "3. Se necessario estender em 2 a 5 segundos para que a pessoa termine a frase inteira, estenda o 'end_time' ate o encerramento do pensamento.\n"
+            f"4. A duracao total (end_time - start_time) deve ficar entre {min_clip_duration} e {max_clip_duration} segundos.\n"
+            "5. Gancho forte nos primeiros 3 segundos.\n"
+            f"6. Retorne no maximo {max_clips} clipes de altissima qualidade narrativa."
         )
 
         user_content = {
@@ -122,7 +130,7 @@ class CurationService:
                     system_instruction=system_instruction,
                     response_mime_type="application/json",
                     response_schema=HighlightCuratorResponse,
-                    temperature=0.2,
+                    temperature=0.1,
                 ),
             )
 
