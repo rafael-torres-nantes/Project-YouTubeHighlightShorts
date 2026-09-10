@@ -29,3 +29,20 @@ class FileUtils:
         """
         if os.path.exists(directory_path):
             shutil.rmtree(directory_path, ignore_errors=True)
+
+    @staticmethod
+    def write_text_file(file_path: str, content: str) -> str:
+        """Grava conteudo textual em formato UTF-8 no arquivo especificado.
+
+        Args:
+            file_path: Caminho de destino do arquivo.
+            content: Conteudo textual a ser gravado.
+
+        Returns:
+            Caminho absoluto do arquivo gravado.
+        """
+        abs_path = os.path.abspath(file_path)
+        os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+        with open(abs_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return abs_path

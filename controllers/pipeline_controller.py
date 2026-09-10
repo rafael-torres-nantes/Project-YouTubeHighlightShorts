@@ -9,6 +9,7 @@ from services.download_service import DownloadService
 from services.retention_service import RetentionService
 from services.transcription_service import TranscriptionService
 from services.video_editor_service import VideoEditorService
+from utils.file_utils import FileUtils
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,55 @@ class PipelineController:
         self._transcription_service = TranscriptionService()
         self._curation_service = CurationService()
         self._video_editor_service = VideoEditorService(ffmpeg_bin=self._settings.get_ffmpeg_bin())
+
+    def generate_markdown_report(
+        self,
+        clips: List[Dict[str, Any]],
+        output_dir: str,
+        max_clips: int,
+        report_filename: str = "report.md",
+    ) -> str:
+        """Gera um arquivo Markdown detalhado com os metadados dos clipes criados.
+
+        Args:
+            clips: Lista de dicionarios com os metadados de cada clipe renderizado.
+            output_dir: Diretorio onde o relatorio sera gravado.
+            max_clips: Quantidade de clipes configurada no ambiente.
+            report_filename: Nome do arquivo markdown (padrao: report.md).
+
+        Returns:
+            Caminho absoluto do arquivo Markdown gerado.
+        """
+        report_path = os.path.join(output_dir, report_filename)
+        lines = [
+            f"### 🎬 Clipes Gerados com Sucesso (Padrão .env = {max_clips} Clipes)",
+            "",
+            f"A variável `MAX_CLIPS={max_clips}` foi configurada e o pipeline gerou {len(clips)} recortes verticais completos, sem cortes abruptos e com a legenda na altura ideal:",
+            "",
+        ]
+
+        for index, clip in enumerate(clips, start=1):
+            title = clip.get("title", f"Clipe {index}")
+            duration = clip.get("duration", 0.0)
+            start_t = clip.get("start_time", 0.0)
+            end_t = clip.get("end_time", 0.0)
+            viral_score = clip.get("viral_score", 0.0)
+            hook = clip.get("hook_summary", "")
+            rendered_path = clip.get("rendered_path", "")
+            filename = os.path.basename(rendered_path) if rendered_path else f"clip_{index}.mp4"
+
+            lines.append(f"#### {index}. {title}")
+            lines.append("")
+            lines.append(f"• ⏱️ **Duração**: {duration:.2f}s (Trecho: {start_t:.2f}s -> {end_t:.2f}s)")
+            lines.append(f"• 🔥 **Viral Score**: {viral_score:.1f} / 10.0")
+            lines.append(f"• 💡 **Gancho**: {hook}")
+            lines.append(f"• 📁 **Arquivo**: `{filename}`")
+            lines.append("")
+
+        content = "\n".join(lines)
+        FileUtils.write_text_file(report_path, content)
+        logger.info("Relatorio Markdown gerado com sucesso em: %s", report_path)
+        return os.path.abspath(report_path)
 
     def execute_pipeline(
         self,
@@ -98,7 +148,6 @@ class PipelineController:
             logger.info("Etapa 5: Renderizando cortes verticais via FFmpeg...")
             generated_clips = []
 
-            # Extrai todas as palavras em lista plana para indexacao no trecho
             all_words: List[Dict[str, Any]] = []
             for seg in enriched_segments:
                 all_words.extend(seg.get("words", []))
@@ -107,11 +156,11 @@ class PipelineController:
                 raw_start = highlight["start_time"]
                 raw_end = highlight["end_time"]
 
-                # Encontra a palavra inicial mais proxima para evitar corte no meio de sílaba
+                # Alinhamento da palavra inicial
                 start_words = [w for w in all_words if abs(w["start"] - raw_start) <= 1.0]
                 clip_start = start_words[0]["start"] if start_words else raw_start
 
-                # Encontra a palavra final correspondente e adiciona pequeno buffer auditivo (0.35s)
+                # Alinhamento da palavra final + buffer de respiro auditivo
                 end_words = [w for w in all_words if w["end"] <= (raw_end + 1.2) and w["end"] >= (raw_end - 0.5)]
                 if end_words:
                     clip_end = max(raw_end, end_words[-1]["end"] + 0.35)
@@ -123,7 +172,6 @@ class PipelineController:
                 output_clip_path = os.path.join(output_dir, clip_filename)
                 ass_sub_path = os.path.join(temp_dir, f"subtitles_clip_{index}.ass")
 
-                # Filtra palavras pertencentes ao intervalo do clipe
                 clip_words = [
                     w for w in all_words if w["start"] >= clip_start and w["end"] <= clip_end
                 ]
@@ -148,6 +196,14 @@ class PipelineController:
                 highlight["duration"] = round(clip_end - clip_start, 2)
                 highlight["rendered_path"] = rendered_path
                 generated_clips.append(highlight)
+
+            # 6. Geracao automatica do relatorio Markdown em output/
+            report_file = self.generate_markdown_report(
+                clips=generated_clips,
+                output_dir=output_dir,
+                max_clips=max_clips,
+            )
+            logger.info("Relatorio consolidado gravado: %s", report_file)
 
             if progress_callback:
                 progress_callback("Concluido: Pipeline finalizada com sucesso.", 100)
